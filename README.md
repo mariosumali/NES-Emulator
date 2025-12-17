@@ -2,7 +2,12 @@
 NES emulator via the browser.
 
 ## Features
-- Full NES emulation via `jsnes`
+- Save & Load States
+- Cheat System (Raw Address/Value)
+- Frame-by-Frame Stepping
+- Adjustable Screen Size (1x - 3x)
+- Fully Remappable Controls
+- Multiple Color Themes
 
 ## Usage
 1. `npm install`
