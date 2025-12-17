@@ -5,10 +5,13 @@ interface ControlsProps {
     onReset: () => void;
     onPause: () => void;
     onResume: () => void;
+    onStep: () => void;
+    onSaveState: () => void;
+    onLoadState: () => void;
     isPlaying: boolean;
 }
 
-export const Controls = ({ onRomLoad, onReset, onPause, onResume, isPlaying }: ControlsProps) => { // Removed isPlaying from props as it is not used in the UI for now
+export const Controls = ({ onRomLoad, onReset, onPause, onResume, onStep, onSaveState, onLoadState, isPlaying }: ControlsProps) => {
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -37,9 +40,17 @@ export const Controls = ({ onRomLoad, onReset, onPause, onResume, isPlaying }: C
                 {isPlaying ? (
                     <button className="btn" onClick={onPause}>Pause</button>
                 ) : (
-                    <button className="btn" onClick={onResume}>Resume</button>
+                    <>
+                        <button className="btn" onClick={onResume}>Resume</button>
+                        <button className="btn" onClick={onStep}>Step</button>
+                    </>
                 )}
                 <button className="btn btn-secondary" onClick={onReset}>Reset</button>
+            </div>
+
+            <div className="control-group">
+                <button className="btn btn-small" onClick={onSaveState}>Save State</button>
+                <button className="btn btn-small" onClick={onLoadState}>Load State</button>
             </div>
 
         </div>

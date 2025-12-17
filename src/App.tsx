@@ -16,8 +16,22 @@ function App() {
   const lastTimeRef = useRef<number>(0);
   const accumulatorRef = useRef<number>(0);
 
+  const cheatsRef = useRef<{ address: number; value: number; enabled: boolean }[]>([]);
+  const [cheats, setCheats] = useState<{ address: number; value: number; enabled: boolean }[]>([]);
+  const [scale, setScale] = useState(2);
   const [isPlaying, setIsPlaying] = useState(false);
   const [romLoaded, setRomLoaded] = useState(false);
+
+  // Sync cheats ref
+  useEffect(() => {
+    cheatsRef.current = cheats;
+  }, [cheats]);
+
+  // Load state from local storage on mount
+  useEffect(() => {
+    const savedScale = localStorage.getItem('nes_scale');
+    if (savedScale) setScale(Number(savedScale));
+  }, []);
 
   // Initialize Emulator System (once)
   useEffect(() => {
@@ -59,14 +73,19 @@ function App() {
     const deltaTime = timestamp - lastTimeRef.current;
     lastTimeRef.current = timestamp;
 
-    // Cap delta time to prevent spiral of death if tab is backgrounded
     const cappedDelta = Math.min(deltaTime, 100);
-
     accumulatorRef.current += cappedDelta;
 
-    const interval = 1000 / 60; // 60 FPS
+    const interval = 1000 / 60;
 
     while (accumulatorRef.current >= interval) {
+      // Apply cheats
+      cheatsRef.current.forEach(cheat => {
+        if (cheat.enabled && nesRef.current) {
+          nesRef.current.writeMem(cheat.address, cheat.value);
+        }
+      });
+
       nesRef.current.frame();
       accumulatorRef.current -= interval;
     }
@@ -102,7 +121,46 @@ function App() {
   const handlePause = () => setIsPlaying(false);
   const handleResume = () => setIsPlaying(true);
 
+  const handleStep = () => {
+    if (nesRef.current) {
+      // Apply cheats even on step? Maybe.
+      cheatsRef.current.forEach(cheat => {
+        if (cheat.enabled && nesRef.current) {
+          nesRef.current.writeMem(cheat.address, cheat.value);
+        }
+      });
+      nesRef.current.frame();
+    }
+  };
+
+  const handleSaveState = () => {
+    if (nesRef.current) {
+      const state = nesRef.current.getState();
+      localStorage.setItem('nes_state', JSON.stringify(state));
+      alert("State Saved!");
+    }
+  };
+
+  const handleLoadState = () => {
+    if (nesRef.current) {
+      const stateStr = localStorage.getItem('nes_state');
+      if (stateStr) {
+        const state = JSON.parse(stateStr);
+        nesRef.current.loadState(state);
+        // Ensure we don't auto-resume if we were paused, or do?
+        // The state implementation might reset some internal counters.
+      } else {
+        alert("No saved state found.");
+      }
+    }
+  };
+
   const [showSettings, setShowSettings] = useState(false);
+
+  const handleScaleChange = (newScale: number) => {
+    setScale(newScale);
+    localStorage.setItem('nes_scale', String(newScale));
+  };
 
   return (
     <div className="app-container">
@@ -115,12 +173,15 @@ function App() {
       </header>
 
       <main className="main-content">
-        <Screen onRef={(draw) => { screenDrawRef.current = draw; }} />
+        <Screen onRef={(draw) => { screenDrawRef.current = draw; }} scale={scale} />
         <Controls
           onRomLoad={handleRomLoad}
           onReset={handleReset}
           onPause={handlePause}
           onResume={handleResume}
+          onStep={handleStep}
+          onSaveState={handleSaveState}
+          onLoadState={handleLoadState}
           isPlaying={isPlaying}
         />
       </main>
@@ -129,6 +190,10 @@ function App() {
         <Settings
           inputController={inputRef.current}
           onClose={() => setShowSettings(false)}
+          scale={scale}
+          onScaleChange={handleScaleChange}
+          cheats={cheats}
+          setCheats={setCheats}
         />
       )}
     </div>

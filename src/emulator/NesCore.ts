@@ -14,6 +14,8 @@ export class NesCore {
 
         this.nes = new NES({
             onFrame: (buffer: number[]) => {
+                // Log every 60th frame to avoid spam, but prove it's running
+                if (Math.random() < 0.01) console.log("NES Frame generated", buffer.length);
                 if (this.frameCallback) this.frameCallback(buffer);
             },
             onAudioSample: (left: number, right: number) => {
@@ -45,6 +47,18 @@ export class NesCore {
 
     public getFPS() {
         return this.nes.getFPS();
+    }
+
+    public getState() {
+        return (this.nes as any).toJSON();
+    }
+
+    public loadState(state: any) {
+        (this.nes as any).fromJSON(state);
+    }
+
+    public writeMem(address: number, value: number) {
+        (this.nes as any).cpu.mmap.write(address, value);
     }
 }
 

@@ -2,9 +2,19 @@ import { useState, useEffect } from 'react';
 import { InputController } from '../emulator/InputController';
 import { NES_BUTTONS } from '../emulator/NesCore';
 
+interface Cheat {
+    address: number;
+    value: number;
+    enabled: boolean;
+}
+
 interface SettingsProps {
     inputController: InputController | null;
     onClose: () => void;
+    scale: number;
+    onScaleChange: (scale: number) => void;
+    cheats: Cheat[];
+    setCheats: React.Dispatch<React.SetStateAction<Cheat[]>>;
 }
 
 const BUTTON_LABELS: Record<number, string> = {
@@ -24,11 +34,23 @@ const BUTTON_ORDER = [
     NES_BUTTONS.SELECT, NES_BUTTONS.START, NES_BUTTONS.B, NES_BUTTONS.A
 ];
 
-export const Settings = ({ inputController, onClose }: SettingsProps) => {
-    const [activeTab, setActiveTab] = useState<'input' | 'appearance'>('input');
+const THEMES = [
+    { name: 'Dark', color: '#121212' },
+    { name: 'Midnight', color: '#0f172a' },
+    { name: 'Retro Gray', color: '#2c2c2c' },
+    { name: 'Deep Purple', color: '#1a0b2e' },
+    { name: 'Matrix', color: '#0d1117' },
+];
+
+export const Settings = ({ inputController, onClose, scale, onScaleChange, cheats, setCheats }: SettingsProps) => {
+    const [activeTab, setActiveTab] = useState<'input' | 'video' | 'appearance' | 'cheats'>('input');
     const [bindings, setBindings] = useState<Map<string, number>>(new Map());
     const [listeningFor, setListeningFor] = useState<number | null>(null);
     const [bgColor, setBgColor] = useState('#121212');
+
+    // Cheat inputs
+    const [cheatAddr, setCheatAddr] = useState('');
+    const [cheatVal, setCheatVal] = useState('');
 
     useEffect(() => {
         if (inputController) {
@@ -54,8 +76,6 @@ export const Settings = ({ inputController, onClose }: SettingsProps) => {
             e.stopPropagation();
 
             const code = e.code;
-            // Clear old bindings for this button to allow clean remapping 
-            // (optional, user might want multiple keys, but single key is standard for "remap")
             inputController.clearButtonBindings(listeningFor);
             inputController.setKeyBinding(code, listeningFor);
 
@@ -81,31 +101,37 @@ export const Settings = ({ inputController, onClose }: SettingsProps) => {
         return keys;
     };
 
-    const THEMES = [
-        { name: 'Dark', color: '#121212' },
-        { name: 'Midnight', color: '#0f172a' },
-        { name: 'Retro Gray', color: '#2c2c2c' },
-        { name: 'Deep Purple', color: '#1a0b2e' },
-        { name: 'Matrix', color: '#0d1117' },
-    ];
+    const addCheat = () => {
+        const addr = parseInt(cheatAddr, 16);
+        const val = parseInt(cheatVal, 16);
+        if (!isNaN(addr) && !isNaN(val)) {
+            setCheats([...cheats, { address: addr, value: val, enabled: true }]);
+            setCheatAddr('');
+            setCheatVal('');
+        }
+    };
+
+    const toggleCheat = (index: number) => {
+        const newCheats = [...cheats];
+        newCheats[index].enabled = !newCheats[index].enabled;
+        setCheats(newCheats);
+    };
+
+    const removeCheat = (index: number) => {
+        const newCheats = [...cheats];
+        newCheats.splice(index, 1);
+        setCheats(newCheats);
+    };
 
     return (
         <div className="modal-overlay">
             <div className="modal">
                 <div className="modal-header">
                     <div className="tabs">
-                        <button
-                            className={`tab-btn ${activeTab === 'input' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('input')}
-                        >
-                            Input
-                        </button>
-                        <button
-                            className={`tab-btn ${activeTab === 'appearance' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('appearance')}
-                        >
-                            Appearance
-                        </button>
+                        <button className={`tab-btn ${activeTab === 'input' ? 'active' : ''}`} onClick={() => setActiveTab('input')}>Input</button>
+                        <button className={`tab-btn ${activeTab === 'video' ? 'active' : ''}`} onClick={() => setActiveTab('video')}>Video</button>
+                        <button className={`tab-btn ${activeTab === 'appearance' ? 'active' : ''}`} onClick={() => setActiveTab('appearance')}>Appearance</button>
+                        <button className={`tab-btn ${activeTab === 'cheats' ? 'active' : ''}`} onClick={() => setActiveTab('cheats')}>Cheats</button>
                     </div>
                     <button className="close-btn" onClick={onClose}>&times;</button>
                 </div>
@@ -114,7 +140,6 @@ export const Settings = ({ inputController, onClose }: SettingsProps) => {
                     {activeTab === 'input' ? (
                         <>
                             <p>Click a button to remap it. Press any key to bind.</p>
-
                             <div className="bindings-list">
                                 {BUTTON_ORDER.map((btn) => (
                                     <div key={btn} className="binding-row">
@@ -124,17 +149,29 @@ export const Settings = ({ inputController, onClose }: SettingsProps) => {
                                                 <span key={k} className="key-tag">{k}</span>
                                             ))}
                                         </div>
-                                        <button
-                                            className={`btn btn-small ${listeningFor === btn ? 'btn-active' : ''}`}
-                                            onClick={() => setListeningFor(btn)}
-                                        >
+                                        <button className={`btn btn-small ${listeningFor === btn ? 'btn-active' : ''}`} onClick={() => setListeningFor(btn)}>
                                             {listeningFor === btn ? 'Press Key...' : 'Change'}
                                         </button>
                                     </div>
                                 ))}
                             </div>
                         </>
-                    ) : (
+                    ) : activeTab === 'video' ? (
+                        <div className="video-settings">
+                            <h3>Screen Size</h3>
+                            <div className="scale-options">
+                                {[1, 1.5, 2, 2.5, 3].map(s => (
+                                    <button
+                                        key={s}
+                                        className={`btn ${scale === s ? 'btn-active' : ''}`}
+                                        onClick={() => onScaleChange(s)}
+                                    >
+                                        {s}x
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    ) : activeTab === 'appearance' ? (
                         <div className="appearance-settings">
                             <h3>Background Color</h3>
                             <div className="theme-grid">
@@ -157,6 +194,37 @@ export const Settings = ({ inputController, onClose }: SettingsProps) => {
                                     />
                                     <span>+</span>
                                 </label>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="cheats-settings">
+                            <h3>Cheats</h3>
+                            <div className="cheat-input-row">
+                                <input
+                                    type="text"
+                                    placeholder="Addr (Hex)"
+                                    value={cheatAddr}
+                                    onChange={e => setCheatAddr(e.target.value)}
+                                    className="input-small"
+                                />
+                                <input
+                                    type="text"
+                                    placeholder="Val (Hex)"
+                                    value={cheatVal}
+                                    onChange={e => setCheatVal(e.target.value)}
+                                    className="input-small"
+                                />
+                                <button className="btn btn-small" onClick={addCheat}>Add</button>
+                            </div>
+                            <div className="cheats-list">
+                                {cheats.map((c, i) => (
+                                    <div key={i} className="cheat-row">
+                                        <span>0x{c.address.toString(16).toUpperCase().padStart(4, '0')} : 0x{c.value.toString(16).toUpperCase().padStart(2, '0')}</span>
+                                        <input type="checkbox" checked={c.enabled} onChange={() => toggleCheat(i)} />
+                                        <button className="btn btn-small btn-danger" onClick={() => removeCheat(i)}>X</button>
+                                    </div>
+                                ))}
+                                {cheats.length === 0 && <p>No cheats added.</p>}
                             </div>
                         </div>
                     )}

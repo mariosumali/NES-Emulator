@@ -2,9 +2,10 @@ import { useEffect, useRef } from 'react';
 
 interface ScreenProps {
     onRef: (draw: (buffer: number[]) => void) => void;
+    scale: number;
 }
 
-export const Screen = ({ onRef }: ScreenProps) => {
+export const Screen = ({ onRef, scale }: ScreenProps) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
 
     useEffect(() => {
@@ -17,32 +18,11 @@ export const Screen = ({ onRef }: ScreenProps) => {
         const buf32 = new Uint32Array(imageData.data.buffer);
 
         const draw = (buffer: number[]) => {
-            // buffer is an array of 32-bit integers from jsnes
-            // write directly to the 32-bit view of imageData
+            // buffer is 32-bit integers (0xRRGGBB). 
+            // We write to 32-bit view.
             for (let i = 0; i < 256 * 240; i++) {
-                // jsnes output is 0xRRGGBB, but 32-bit view expects 0xAABBGGRR (little endian)
-                // or we just set alpha to 255.
-                // Actually jsnes usually returns packed integers.
-                // We might need to manually set r,g,b,a if endianness is tricky.
-                // But let's try direct copy first, setting Alpha to 0xFF.
-
-                const val = buffer[i];
-                // val is 0xRRGGBB.
-                // We need 0xFFBBGGRR (ABGR) for little endian systems, or 0xAABBGGRR for big endian?
-                // Actually ImageData is usually usually RGBA order in memory, but Uint32Array access depends on endianness.
-                // On little endian (Intel/Arm): 0xAABBGGRR.
-                // So R is at lowest byte.
-                // jsnes val is 0xRRGGBB (R at 16, G at 8, B at 0).
-                // So we need to swap bytes?
-                // Let's do the slow safe way first: Uint8ClampedArray.
-
-                // Wait, looping 60k pixels in JS every frame is costly if we do property access.
-                // Let's try to assume buffer[i] is effectively the color available.
-                // Since jsnes doesn't set alpha, we might get 0 alpha.
-
-                // Let's do the safe copy for now:
-                // Or better:
-                buf32[i] = 0xFF000000 | buffer[i]; // Set Alpha to 255
+                // Set alpha to 255 (0xFF)
+                buf32[i] = 0xFF000000 | buffer[i];
             }
 
             ctx.putImageData(imageData, 0, 0);
@@ -59,8 +39,8 @@ export const Screen = ({ onRef }: ScreenProps) => {
                 height={240}
                 style={{
                     imageRendering: 'pixelated',
-                    width: '512px',
-                    height: '480px',
+                    width: `${256 * scale}px`,
+                    height: `${240 * scale}px`,
                     border: '4px solid #333',
                     background: '#000'
                 }}
