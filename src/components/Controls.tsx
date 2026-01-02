@@ -9,16 +9,11 @@ interface ControlsProps {
     onSaveState: () => void;
     onLoadState: () => void;
     isPlaying: boolean;
-    // New props
     currentSlot: number;
     onSlotChange: (slot: number) => void;
     savedSlots: boolean[];
     speedMultiplier: number;
     onSpeedChange: (speed: number) => void;
-    isRewinding: boolean;
-    onRewindStart: () => void;
-    onRewindStop: () => void;
-    canRewind: boolean;
     onFullscreen: () => void;
     isFullscreen: boolean;
     onScreenshot: () => void;
@@ -40,10 +35,6 @@ export const Controls = ({
     savedSlots,
     speedMultiplier,
     onSpeedChange,
-    isRewinding,
-    onRewindStart,
-    onRewindStop,
-    canRewind,
     onFullscreen,
     isFullscreen,
     onScreenshot,
@@ -66,8 +57,8 @@ export const Controls = ({
     };
 
     const getSpeedLabel = (speed: number) => {
-        if (speed < 1) return `${speed}x 🐢`;
-        if (speed > 1) return `${speed}x 🐇`;
+        if (speed < 1) return `${speed}x`;
+        if (speed > 1) return `${speed}x`;
         return '1x';
     };
 
@@ -100,33 +91,21 @@ export const Controls = ({
                     onClick={() => onSpeedChange(speedMultiplier === 0.5 ? 1 : 0.5)}
                     title="Slow Motion (0.5x)"
                 >
-                    🐢
+                    0.5x
                 </button>
                 <button
                     className={`btn btn-small ${speedMultiplier === 2 ? 'btn-active' : ''}`}
                     onClick={() => onSpeedChange(speedMultiplier === 2 ? 1 : 2)}
                     title="Fast Forward (2x)"
                 >
-                    ⏩
+                    2x
                 </button>
                 <button
                     className={`btn btn-small ${speedMultiplier === 4 ? 'btn-active' : ''}`}
                     onClick={() => onSpeedChange(speedMultiplier === 4 ? 1 : 4)}
                     title="Turbo (4x)"
                 >
-                    ⏩⏩
-                </button>
-                <button
-                    className={`btn btn-small ${isRewinding ? 'btn-active' : ''}`}
-                    onMouseDown={onRewindStart}
-                    onMouseUp={onRewindStop}
-                    onMouseLeave={onRewindStop}
-                    onTouchStart={onRewindStart}
-                    onTouchEnd={onRewindStop}
-                    disabled={!canRewind}
-                    title="Rewind (hold)"
-                >
-                    ⏪
+                    4x
                 </button>
                 {speedMultiplier !== 1 && (
                     <span className="speed-indicator">{getSpeedLabel(speedMultiplier)}</span>
@@ -158,21 +137,21 @@ export const Controls = ({
                     onClick={onScreenshot}
                     title="Screenshot"
                 >
-                    📷
+                    Screenshot
                 </button>
                 <button
                     className={`btn btn-small ${isRecording ? 'btn-recording' : ''}`}
                     onClick={onRecordToggle}
                     title={isRecording ? 'Stop Recording' : 'Start Recording'}
                 >
-                    {isRecording ? '⏹️' : '⏺️'}
+                    {isRecording ? 'Stop Rec' : 'Record'}
                 </button>
                 <button
                     className="btn btn-small"
                     onClick={onFullscreen}
                     title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
                 >
-                    {isFullscreen ? '⛶' : '⛶'}
+                    Fullscreen
                 </button>
             </div>
 

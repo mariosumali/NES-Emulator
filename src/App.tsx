@@ -10,7 +10,6 @@ import { Settings } from './components/Settings';
 import { TouchControls } from './components/TouchControls';
 import './index.css';
 
-const REWIND_BUFFER_SIZE = 600; // 10 seconds at 60fps
 const SAVE_SLOTS = 5;
 
 function App() {
@@ -24,11 +23,6 @@ function App() {
   const requestRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number>(0);
   const accumulatorRef = useRef<number>(0);
-
-  // Rewind buffer
-  const rewindBufferRef = useRef<any[]>([]);
-  const [canRewind, setCanRewind] = useState(false);
-  const [isRewinding, setIsRewinding] = useState(false);
 
   // Cheats
   const cheatsRef = useRef<{ address: number; value: number; enabled: boolean }[]>([]);
@@ -128,20 +122,7 @@ function App() {
   }, []);
 
   const runLoop = useCallback((timestamp: number) => {
-    if (!nesRef.current) return;
-
-    // Handle rewind
-    if (isRewinding) {
-      if (rewindBufferRef.current.length > 0) {
-        const state = rewindBufferRef.current.pop();
-        nesRef.current.loadState(state);
-        setCanRewind(rewindBufferRef.current.length > 0);
-      }
-      requestRef.current = requestAnimationFrame(runLoop);
-      return;
-    }
-
-    if (!isPlaying) return;
+    if (!nesRef.current || !isPlaying) return;
 
     if (lastTimeRef.current === 0) {
       lastTimeRef.current = timestamp;
@@ -168,16 +149,6 @@ function App() {
       nesRef.current.frame();
       accumulatorRef.current -= interval;
       framesThisTick++;
-
-      // Save state to rewind buffer (every frame at normal speed, less often when fast)
-      if (speedMultiplier <= 1 || framesThisTick === 1) {
-        const state = nesRef.current.getState();
-        rewindBufferRef.current.push(state);
-        if (rewindBufferRef.current.length > REWIND_BUFFER_SIZE) {
-          rewindBufferRef.current.shift();
-        }
-        setCanRewind(true);
-      }
     }
 
     // Cap accumulator to prevent spiral of death
@@ -186,34 +157,30 @@ function App() {
     }
 
     requestRef.current = requestAnimationFrame(runLoop);
-  }, [isPlaying, isRewinding, speedMultiplier]);
+  }, [isPlaying, speedMultiplier]);
 
   useEffect(() => {
-    if (isPlaying || isRewinding) {
-      if (audioRef.current && !isRewinding) audioRef.current.start();
+    if (isPlaying) {
+      if (audioRef.current) audioRef.current.start();
       lastTimeRef.current = 0;
       accumulatorRef.current = 0;
       requestRef.current = requestAnimationFrame(runLoop);
     } else {
       if (requestRef.current) cancelAnimationFrame(requestRef.current);
     }
-  }, [isPlaying, isRewinding, runLoop]);
+  }, [isPlaying, runLoop]);
 
   const handleRomLoad = (data: string) => {
     if (nesRef.current) {
       nesRef.current.loadROM(data);
       setRomLoaded(true);
       setIsPlaying(true);
-      rewindBufferRef.current = [];
-      setCanRewind(false);
     }
   };
 
   const handleReset = () => {
     if (nesRef.current) {
       nesRef.current.reset();
-      rewindBufferRef.current = [];
-      setCanRewind(false);
     }
   };
 
@@ -253,8 +220,6 @@ function App() {
       if (stateStr) {
         const state = JSON.parse(stateStr);
         nesRef.current.loadState(state);
-        rewindBufferRef.current = [];
-        setCanRewind(false);
       } else {
         alert(`No saved state in slot ${currentSlot}.`);
       }
@@ -273,17 +238,6 @@ function App() {
 
   const handleSpeedChange = (speed: number) => {
     setSpeedMultiplier(speed);
-  };
-
-  const handleRewindStart = () => {
-    if (canRewind) {
-      setIsRewinding(true);
-      setIsPlaying(false);
-    }
-  };
-
-  const handleRewindStop = () => {
-    setIsRewinding(false);
   };
 
   const handleFullscreen = () => {
@@ -357,10 +311,6 @@ function App() {
           savedSlots={savedSlots}
           speedMultiplier={speedMultiplier}
           onSpeedChange={handleSpeedChange}
-          isRewinding={isRewinding}
-          onRewindStart={handleRewindStart}
-          onRewindStop={handleRewindStop}
-          canRewind={canRewind}
           onFullscreen={handleFullscreen}
           isFullscreen={isFullscreen}
           onScreenshot={handleScreenshot}
