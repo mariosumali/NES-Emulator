@@ -1,10 +1,15 @@
 import { NES_BUTTONS } from "./NesCore";
 
+interface KeyBinding {
+    player: 1 | 2;
+    button: number;
+}
+
 export class InputController {
-    private keys: Map<string, number>;
+    private keys: Map<string, KeyBinding>;
     private handleButtonDown: (player: 1 | 2, button: number) => void;
     private handleButtonUp: (player: 1 | 2, button: number) => void;
-    private STORAGE_KEY = 'nes_emulator_keymap';
+    private STORAGE_KEY = 'nes_emulator_keymap_v2';
 
     constructor(
         onButtonDown: (player: 1 | 2, button: number) => void,
@@ -34,42 +39,55 @@ export class InputController {
 
     private setDefaultKeyMap() {
         this.keys = new Map([
-            ['KeyJ', NES_BUTTONS.A],
-            ['KeyK', NES_BUTTONS.B],
-            ['ShiftRight', NES_BUTTONS.SELECT],
-            ['Enter', NES_BUTTONS.START],
-            ['KeyW', NES_BUTTONS.UP],
-            ['KeyA', NES_BUTTONS.LEFT],
-            ['KeyS', NES_BUTTONS.DOWN],
-            ['KeyD', NES_BUTTONS.RIGHT],
-            // Arrows
-            ['ArrowUp', NES_BUTTONS.UP],
-            ['ArrowLeft', NES_BUTTONS.LEFT],
-            ['ArrowDown', NES_BUTTONS.DOWN],
-            ['ArrowRight', NES_BUTTONS.RIGHT],
+            // Player 1 - WASD + JK
+            ['KeyJ', { player: 1, button: NES_BUTTONS.A }],
+            ['KeyK', { player: 1, button: NES_BUTTONS.B }],
+            ['ShiftRight', { player: 1, button: NES_BUTTONS.SELECT }],
+            ['Enter', { player: 1, button: NES_BUTTONS.START }],
+            ['KeyW', { player: 1, button: NES_BUTTONS.UP }],
+            ['KeyA', { player: 1, button: NES_BUTTONS.LEFT }],
+            ['KeyS', { player: 1, button: NES_BUTTONS.DOWN }],
+            ['KeyD', { player: 1, button: NES_BUTTONS.RIGHT }],
+            // Player 1 - Arrow keys (alternative)
+            ['ArrowUp', { player: 1, button: NES_BUTTONS.UP }],
+            ['ArrowLeft', { player: 1, button: NES_BUTTONS.LEFT }],
+            ['ArrowDown', { player: 1, button: NES_BUTTONS.DOWN }],
+            ['ArrowRight', { player: 1, button: NES_BUTTONS.RIGHT }],
+            // Player 2 - Numpad
+            ['Numpad8', { player: 2, button: NES_BUTTONS.UP }],
+            ['Numpad4', { player: 2, button: NES_BUTTONS.LEFT }],
+            ['Numpad5', { player: 2, button: NES_BUTTONS.DOWN }],
+            ['Numpad2', { player: 2, button: NES_BUTTONS.DOWN }],
+            ['Numpad6', { player: 2, button: NES_BUTTONS.RIGHT }],
+            ['Numpad1', { player: 2, button: NES_BUTTONS.A }],
+            ['Numpad0', { player: 2, button: NES_BUTTONS.B }],
+            ['Numpad7', { player: 2, button: NES_BUTTONS.SELECT }],
+            ['Numpad9', { player: 2, button: NES_BUTTONS.START }],
         ]);
     }
 
-    public getKeyMap(): Map<string, number> {
+    public getKeyMap(): Map<string, KeyBinding> {
         return new Map(this.keys);
     }
 
-    public setKeyBinding(code: string, button: number) {
-        // Remove existing binding for this button (optional, but good for 1:1 mapping)
-        // Actually, we usually allow multiple keys for one button (like WASD + Arrows)
-        // But for remapping UI, we usually want "Press key for A".
-        // If we want to support multiple keys, the UI needs to handle it.
-        // For simplicity, let's just add/overwrite.
+    public getKeyMapForPlayer(player: 1 | 2): Map<string, number> {
+        const playerKeys = new Map<string, number>();
+        this.keys.forEach((binding, code) => {
+            if (binding.player === player) {
+                playerKeys.set(code, binding.button);
+            }
+        });
+        return playerKeys;
+    }
 
-        // If we want to CLEAR old bindings for this button, we'd have to iterate.
-        // Let's just add it for now.
-        this.keys.set(code, button);
+    public setKeyBinding(code: string, player: 1 | 2, button: number) {
+        this.keys.set(code, { player, button });
         this.saveKeyMap();
     }
 
-    public clearButtonBindings(button: number) {
-        for (const [code, btn] of this.keys.entries()) {
-            if (btn === button) {
+    public clearButtonBindings(player: 1 | 2, button: number) {
+        for (const [code, binding] of this.keys.entries()) {
+            if (binding.player === player && binding.button === button) {
                 this.keys.delete(code);
             }
         }
@@ -94,16 +112,16 @@ export class InputController {
         // Ignore repetitive keydown events
         if (e.repeat) return;
 
-        const button = this.keys.get(e.code);
-        if (button !== undefined) {
-            this.handleButtonDown(1, button); // Player 1
+        const binding = this.keys.get(e.code);
+        if (binding !== undefined) {
+            this.handleButtonDown(binding.player, binding.button);
         }
     };
 
     private onKeyUp = (e: KeyboardEvent) => {
-        const button = this.keys.get(e.code);
-        if (button !== undefined) {
-            this.handleButtonUp(1, button); // Player 1
+        const binding = this.keys.get(e.code);
+        if (binding !== undefined) {
+            this.handleButtonUp(binding.player, binding.button);
         }
     };
 }
