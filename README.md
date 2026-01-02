@@ -1,6 +1,8 @@
 # NES Emulator Web
 NES emulator via the browser.
 
+![NES Emulator Screenshot](./screenshot.png)
+
 ## Features
 - Save & Load States
 - Cheat System (Raw Address/Value)
