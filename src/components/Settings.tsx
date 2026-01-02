@@ -1,20 +1,28 @@
 import { useState, useEffect } from 'react';
 import { InputController } from '../emulator/InputController';
+import { GamepadController } from '../emulator/GamepadController';
 import { NES_BUTTONS } from '../emulator/NesCore';
+import { decodeGameGenie, isValidGameGenieCode } from '../utils/gameGenie';
 
 interface Cheat {
     address: number;
     value: number;
     enabled: boolean;
+    label?: string; // For Game Genie codes
 }
 
 interface SettingsProps {
     inputController: InputController | null;
+    gamepadController: GamepadController | null;
     onClose: () => void;
     scale: number;
     onScaleChange: (scale: number) => void;
+    crtFilter: 'off' | 'scanlines' | 'crt';
+    onCrtFilterChange: (filter: 'off' | 'scanlines' | 'crt') => void;
     cheats: Cheat[];
     setCheats: React.Dispatch<React.SetStateAction<Cheat[]>>;
+    showTouchControls: boolean;
+    onTouchControlsChange: (show: boolean) => void;
 }
 
 const BUTTON_LABELS: Record<number, string> = {
@@ -42,15 +50,35 @@ const THEMES = [
     { name: 'Matrix', color: '#0d1117' },
 ];
 
-export const Settings = ({ inputController, onClose, scale, onScaleChange, cheats, setCheats }: SettingsProps) => {
-    const [activeTab, setActiveTab] = useState<'input' | 'video' | 'appearance' | 'cheats'>('input');
-    const [bindings, setBindings] = useState<Map<string, number>>(new Map());
+type TabType = 'input' | 'gamepad' | 'video' | 'appearance' | 'cheats';
+
+export const Settings = ({
+    inputController,
+    gamepadController,
+    onClose,
+    scale,
+    onScaleChange,
+    crtFilter,
+    onCrtFilterChange,
+    cheats,
+    setCheats,
+    showTouchControls,
+    onTouchControlsChange
+}: SettingsProps) => {
+    const [activeTab, setActiveTab] = useState<TabType>('input');
+    const [activePlayer, setActivePlayer] = useState<1 | 2>(1);
+    const [bindings, setBindings] = useState<Map<string, { player: 1 | 2; button: number }>>(new Map());
     const [listeningFor, setListeningFor] = useState<number | null>(null);
     const [bgColor, setBgColor] = useState('#121212');
 
     // Cheat inputs
     const [cheatAddr, setCheatAddr] = useState('');
     const [cheatVal, setCheatVal] = useState('');
+    const [gameGenieCode, setGameGenieCode] = useState('');
+    const [gameGenieError, setGameGenieError] = useState('');
+
+    // Gamepad state
+    const [connectedGamepads, setConnectedGamepads] = useState<Gamepad[]>([]);
 
     useEffect(() => {
         if (inputController) {
@@ -62,7 +90,17 @@ export const Settings = ({ inputController, onClose, scale, onScaleChange, cheat
             setBgColor(savedBg);
             document.documentElement.style.setProperty('--bg-color', savedBg);
         }
-    }, [inputController]);
+
+        // Check for connected gamepads
+        const checkGamepads = () => {
+            if (gamepadController) {
+                setConnectedGamepads(gamepadController.getConnectedGamepads());
+            }
+        };
+        checkGamepads();
+        const interval = setInterval(checkGamepads, 1000);
+        return () => clearInterval(interval);
+    }, [inputController, gamepadController]);
 
     const handleBgChange = (color: string) => {
         setBgColor(color);
@@ -76,8 +114,8 @@ export const Settings = ({ inputController, onClose, scale, onScaleChange, cheat
             e.stopPropagation();
 
             const code = e.code;
-            inputController.clearButtonBindings(listeningFor);
-            inputController.setKeyBinding(code, listeningFor);
+            inputController.clearButtonBindings(activePlayer, listeningFor);
+            inputController.setKeyBinding(code, activePlayer, listeningFor);
 
             setBindings(inputController.getKeyMap());
             setListeningFor(null);
@@ -91,12 +129,12 @@ export const Settings = ({ inputController, onClose, scale, onScaleChange, cheat
         return () => {
             window.removeEventListener('keydown', handleKeyDown);
         };
-    }, [listeningFor, inputController]);
+    }, [listeningFor, inputController, activePlayer]);
 
-    const getKeysForButton = (btn: number) => {
+    const getKeysForButton = (player: 1 | 2, btn: number) => {
         const keys: string[] = [];
-        bindings.forEach((b, code) => {
-            if (b === btn) keys.push(code);
+        bindings.forEach((binding, code) => {
+            if (binding.player === player && binding.button === btn) keys.push(code);
         });
         return keys;
     };
@@ -109,6 +147,28 @@ export const Settings = ({ inputController, onClose, scale, onScaleChange, cheat
             setCheatAddr('');
             setCheatVal('');
         }
+    };
+
+    const addGameGenieCode = () => {
+        if (!isValidGameGenieCode(gameGenieCode)) {
+            setGameGenieError('Invalid Game Genie code');
+            return;
+        }
+
+        const decoded = decodeGameGenie(gameGenieCode);
+        if (!decoded) {
+            setGameGenieError('Failed to decode Game Genie code');
+            return;
+        }
+
+        setCheats([...cheats, {
+            address: decoded.address,
+            value: decoded.value,
+            enabled: true,
+            label: gameGenieCode.toUpperCase()
+        }]);
+        setGameGenieCode('');
+        setGameGenieError('');
     };
 
     const toggleCheat = (index: number) => {
@@ -125,12 +185,13 @@ export const Settings = ({ inputController, onClose, scale, onScaleChange, cheat
 
     return (
         <div className="modal-overlay">
-            <div className="modal">
+            <div className="modal modal-wide">
                 <div className="modal-header">
                     <div className="tabs">
-                        <button className={`tab-btn ${activeTab === 'input' ? 'active' : ''}`} onClick={() => setActiveTab('input')}>Input</button>
+                        <button className={`tab-btn ${activeTab === 'input' ? 'active' : ''}`} onClick={() => setActiveTab('input')}>Keyboard</button>
+                        <button className={`tab-btn ${activeTab === 'gamepad' ? 'active' : ''}`} onClick={() => setActiveTab('gamepad')}>Gamepad</button>
                         <button className={`tab-btn ${activeTab === 'video' ? 'active' : ''}`} onClick={() => setActiveTab('video')}>Video</button>
-                        <button className={`tab-btn ${activeTab === 'appearance' ? 'active' : ''}`} onClick={() => setActiveTab('appearance')}>Appearance</button>
+                        <button className={`tab-btn ${activeTab === 'appearance' ? 'active' : ''}`} onClick={() => setActiveTab('appearance')}>Theme</button>
                         <button className={`tab-btn ${activeTab === 'cheats' ? 'active' : ''}`} onClick={() => setActiveTab('cheats')}>Cheats</button>
                     </div>
                     <button className="close-btn" onClick={onClose}>&times;</button>
@@ -139,13 +200,27 @@ export const Settings = ({ inputController, onClose, scale, onScaleChange, cheat
                 <div className="settings-content">
                     {activeTab === 'input' ? (
                         <>
+                            <div className="player-toggle">
+                                <button
+                                    className={`btn btn-small ${activePlayer === 1 ? 'btn-active' : ''}`}
+                                    onClick={() => setActivePlayer(1)}
+                                >
+                                    Player 1
+                                </button>
+                                <button
+                                    className={`btn btn-small ${activePlayer === 2 ? 'btn-active' : ''}`}
+                                    onClick={() => setActivePlayer(2)}
+                                >
+                                    Player 2
+                                </button>
+                            </div>
                             <p>Click a button to remap it. Press any key to bind.</p>
                             <div className="bindings-list">
                                 {BUTTON_ORDER.map((btn) => (
                                     <div key={btn} className="binding-row">
                                         <span className="binding-label">{BUTTON_LABELS[btn]}</span>
                                         <div className="binding-keys">
-                                            {getKeysForButton(btn).map((k) => (
+                                            {getKeysForButton(activePlayer, btn).map((k) => (
                                                 <span key={k} className="key-tag">{k}</span>
                                             ))}
                                         </div>
@@ -156,6 +231,35 @@ export const Settings = ({ inputController, onClose, scale, onScaleChange, cheat
                                 ))}
                             </div>
                         </>
+                    ) : activeTab === 'gamepad' ? (
+                        <div className="gamepad-settings">
+                            <h3>Connected Gamepads</h3>
+                            {connectedGamepads.length === 0 ? (
+                                <p className="text-secondary">No gamepads detected. Connect a controller and press any button.</p>
+                            ) : (
+                                <div className="gamepad-list">
+                                    {connectedGamepads.map((gp, idx) => (
+                                        <div key={gp.index} className="gamepad-item">
+                                            <span className="gamepad-icon">🎮</span>
+                                            <div>
+                                                <div className="gamepad-name">{gp.id}</div>
+                                                <div className="gamepad-player">Player {idx + 1}</div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                            <div className="gamepad-info">
+                                <h4>Default Mapping</h4>
+                                <ul>
+                                    <li><strong>D-Pad / Left Stick:</strong> Movement</li>
+                                    <li><strong>A/Cross:</strong> B Button</li>
+                                    <li><strong>B/Circle:</strong> A Button</li>
+                                    <li><strong>Back/Share:</strong> Select</li>
+                                    <li><strong>Start/Options:</strong> Start</li>
+                                </ul>
+                            </div>
+                        </div>
                     ) : activeTab === 'video' ? (
                         <div className="video-settings">
                             <h3>Screen Size</h3>
@@ -170,6 +274,38 @@ export const Settings = ({ inputController, onClose, scale, onScaleChange, cheat
                                     </button>
                                 ))}
                             </div>
+
+                            <h3>Display Filter</h3>
+                            <div className="filter-options">
+                                <button
+                                    className={`btn ${crtFilter === 'off' ? 'btn-active' : ''}`}
+                                    onClick={() => onCrtFilterChange('off')}
+                                >
+                                    Sharp
+                                </button>
+                                <button
+                                    className={`btn ${crtFilter === 'scanlines' ? 'btn-active' : ''}`}
+                                    onClick={() => onCrtFilterChange('scanlines')}
+                                >
+                                    Scanlines
+                                </button>
+                                <button
+                                    className={`btn ${crtFilter === 'crt' ? 'btn-active' : ''}`}
+                                    onClick={() => onCrtFilterChange('crt')}
+                                >
+                                    CRT
+                                </button>
+                            </div>
+
+                            <h3>Touch Controls</h3>
+                            <label className="toggle-row">
+                                <span>Show on-screen controls</span>
+                                <input
+                                    type="checkbox"
+                                    checked={showTouchControls}
+                                    onChange={(e) => onTouchControlsChange(e.target.checked)}
+                                />
+                            </label>
                         </div>
                     ) : activeTab === 'appearance' ? (
                         <div className="appearance-settings">
@@ -198,7 +334,24 @@ export const Settings = ({ inputController, onClose, scale, onScaleChange, cheat
                         </div>
                     ) : (
                         <div className="cheats-settings">
-                            <h3>Cheats</h3>
+                            <h3>Game Genie Codes</h3>
+                            <div className="cheat-input-row">
+                                <input
+                                    type="text"
+                                    placeholder="e.g., SXIOPO"
+                                    value={gameGenieCode}
+                                    onChange={e => {
+                                        setGameGenieCode(e.target.value);
+                                        setGameGenieError('');
+                                    }}
+                                    className="input-medium"
+                                    maxLength={8}
+                                />
+                                <button className="btn btn-small" onClick={addGameGenieCode}>Add</button>
+                            </div>
+                            {gameGenieError && <p className="error-text">{gameGenieError}</p>}
+
+                            <h3>Raw Cheats</h3>
                             <div className="cheat-input-row">
                                 <input
                                     type="text"
@@ -216,15 +369,22 @@ export const Settings = ({ inputController, onClose, scale, onScaleChange, cheat
                                 />
                                 <button className="btn btn-small" onClick={addCheat}>Add</button>
                             </div>
+
+                            <h3>Active Cheats</h3>
                             <div className="cheats-list">
                                 {cheats.map((c, i) => (
                                     <div key={i} className="cheat-row">
-                                        <span>0x{c.address.toString(16).toUpperCase().padStart(4, '0')} : 0x{c.value.toString(16).toUpperCase().padStart(2, '0')}</span>
+                                        <span>
+                                            {c.label ? (
+                                                <>{c.label} → </>
+                                            ) : null}
+                                            0x{c.address.toString(16).toUpperCase().padStart(4, '0')} : 0x{c.value.toString(16).toUpperCase().padStart(2, '0')}
+                                        </span>
                                         <input type="checkbox" checked={c.enabled} onChange={() => toggleCheat(i)} />
                                         <button className="btn btn-small btn-danger" onClick={() => removeCheat(i)}>X</button>
                                     </div>
                                 ))}
-                                {cheats.length === 0 && <p>No cheats added.</p>}
+                                {cheats.length === 0 && <p className="text-secondary">No cheats added.</p>}
                             </div>
                         </div>
                     )}
