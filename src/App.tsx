@@ -4,7 +4,7 @@ import { AudioController } from './emulator/AudioController';
 import { InputController } from './emulator/InputController';
 import { GamepadController } from './emulator/GamepadController';
 import { RecordingController } from './emulator/RecordingController';
-import { Screen, ScreenHandle } from './components/Screen';
+import { Screen, type ScreenHandle } from './components/Screen';
 import { Controls } from './components/Controls';
 import { Settings } from './components/Settings';
 import { TouchControls } from './components/TouchControls';

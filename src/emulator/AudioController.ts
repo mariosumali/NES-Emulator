@@ -1,7 +1,7 @@
 export class AudioController {
     private context: AudioContext | null = null;
     private processor: ScriptProcessorNode | null = null;
-    private bufferSize = 8192; // Higher latency but safer for JS emulation
+    // Buffer for audio samples
     private buffer: number[] = [];
     private bufferLimit = 8192 * 2; // Limit buffer size to avoid growing indefinitely
 
