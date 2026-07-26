@@ -1,0 +1,259 @@
+/* ==========================================================================
+   Touch controls and responsive layout
+   --------------------------------------------------------------------------
+   Landscape is how people actually play on a phone, so it gets a real layout
+   rather than a squeezed portrait one: the screen fills the height, the pads
+   flank it, and nothing scrolls.
+   ========================================================================== */
+
+.touch-controls {
+  position: fixed;
+  inset-block-end: 0;
+  inset-inline: 0;
+  z-index: var(--z-touch);
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  padding: var(--sp-4);
+  /* Clear the iPhone home indicator and any notch in landscape. */
+  padding-block-end: calc(var(--sp-4) + env(safe-area-inset-bottom));
+  padding-inline-start: calc(var(--sp-4) + env(safe-area-inset-left));
+  padding-inline-end: calc(var(--sp-4) + env(safe-area-inset-right));
+  pointer-events: none;
+  opacity: var(--touch-opacity, 0.6);
+  transition: opacity var(--dur-mid) var(--ease-out);
+}
+
+.touch-controls > * { pointer-events: auto; }
+
+/*
+  `touch-action: none` is what actually stops scrolling, pinch-zoom and iOS
+  rubber-banding under the controls — not preventDefault(), which React's
+  passive touchstart listener ignores.
+*/
+.touch-dpad,
+.touch-face,
+.touch-center,
+.touch-btn {
+  touch-action: none;
+}
+
+.touch-controls:has(.touch-btn[data-pressed='true']) { opacity: 1; }
+
+.touch-btn {
+  display: grid;
+  place-items: center;
+  background: rgb(255 255 255 / 0.1);
+  border: 1.5px solid rgb(255 255 255 / 0.22);
+  color: #fff;
+  font-weight: 700;
+  /* Stops the long-press callout, double-tap zoom, and text selection that
+     otherwise make on-screen controls unusable on iOS. */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: none;
+  backdrop-filter: blur(8px);
+  transition: transform var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
+}
+
+.touch-btn[data-pressed='true'] {
+  background: rgb(255 255 255 / 0.3);
+  transform: scale(0.93);
+}
+
+/* --- D-pad: a 3x3 grid so a thumb can slide between directions. ---------- */
+
+.touch-dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 52px);
+  grid-template-rows: repeat(3, 52px);
+  gap: 2px;
+}
+
+.touch-dpad .touch-btn { border-radius: 10px; font-size: 1.1rem; }
+
+.dpad-up    { grid-area: 1 / 2; border-start-start-radius: 16px; border-start-end-radius: 16px; }
+.dpad-left  { grid-area: 2 / 1; border-start-start-radius: 16px; border-end-start-radius: 16px; }
+.dpad-mid   { grid-area: 2 / 2; background: rgb(255 255 255 / 0.06); border-radius: 4px; }
+.dpad-right { grid-area: 2 / 3; border-start-end-radius: 16px; border-end-end-radius: 16px; }
+.dpad-down  { grid-area: 3 / 2; border-end-start-radius: 16px; border-end-end-radius: 16px; }
+
+/* --- Face buttons ------------------------------------------------------- */
+
+.touch-face {
+  display: grid;
+  grid-template-areas: '. a' 'b .';
+  gap: var(--sp-2);
+  transform: rotate(-12deg);
+}
+
+.touch-face .touch-btn {
+  inline-size: 66px;
+  block-size: 66px;
+  border-radius: 50%;
+  font-size: 1.35rem;
+}
+
+.touch-a {
+  grid-area: a;
+  background: rgb(var(--danger-rgb) / 0.32);
+  border-color: rgb(var(--danger-rgb) / 0.5);
+}
+
+.touch-b {
+  grid-area: b;
+  background: rgb(var(--warn-rgb) / 0.3);
+  border-color: rgb(var(--warn-rgb) / 0.5);
+}
+
+/* --- Start / Select ----------------------------------------------------- */
+
+.touch-center {
+  display: flex;
+  gap: var(--sp-3);
+  align-self: flex-end;
+  padding-block-end: var(--sp-2);
+}
+
+.touch-center .touch-btn {
+  inline-size: 68px;
+  block-size: 30px;
+  border-radius: var(--r-full);
+  font-size: 0.6rem;
+  letter-spacing: var(--tracking-wide);
+}
+
+/* ==========================================================================
+   Responsive
+   ========================================================================== */
+
+@media (max-width: 900px) {
+  .stage { padding: var(--sp-4) var(--sp-3) var(--sp-6); gap: var(--sp-4); }
+  .bezel { padding: 8px; border-radius: var(--r-lg); }
+  .panel { inline-size: 100vw; }
+  .panel[data-wide='true'] { inline-size: 100vw; }
+  .library-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+}
+
+@media (max-width: 560px) {
+  .topbar { block-size: 52px; padding-inline: var(--sp-3); }
+  .brand-name { display: none; }
+  .topbar-title { font-size: var(--text-xs); }
+  .dock { gap: 0; padding: var(--sp-1); border-radius: var(--r-lg); }
+  .dock-divider { display: none; }
+  .empty-state { padding: var(--sp-8) var(--sp-4); }
+  .empty-cartridge { inline-size: 72px; block-size: 72px; }
+  .empty-title { font-size: var(--text-lg); }
+  .hud { inset-block-start: var(--sp-3); inset-inline-start: var(--sp-3); }
+}
+
+/* --------------------------------------------------- Landscape phone ---- */
+
+/*
+  Under ~500px tall in landscape we are on a phone held sideways. Everything
+  chrome-like collapses, the screen takes the full height, and the pads move
+  to the sides of it rather than underneath.
+*/
+@media (orientation: landscape) and (max-height: 500px) {
+  .app {
+    grid-template-rows: 1fr;
+    block-size: 100dvh;
+    overflow: hidden;
+  }
+
+  .topbar {
+    position: fixed;
+    inset-block-start: 0;
+    inset-inline: 0;
+    block-size: 40px;
+    background: transparent;
+    border: none;
+    backdrop-filter: none;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--dur-mid) var(--ease-out);
+  }
+
+  /* Reveal the bar on hover/focus so it stays reachable without stealing space. */
+  .app[data-chrome='true'] .topbar {
+    opacity: 1;
+    pointer-events: auto;
+    background: color-mix(in srgb, var(--bg) 85%, transparent);
+    backdrop-filter: blur(16px);
+  }
+
+  .stage {
+    padding: 0;
+    block-size: 100dvh;
+    justify-content: center;
+  }
+
+  .bezel { padding: 0; border-radius: 0; box-shadow: none; background: transparent; }
+  .bezel::after { display: none; }
+  .screen-canvas { border-radius: 0; }
+  .screen-glow { display: none; }
+
+  .dock {
+    position: fixed;
+    inset-block-end: calc(var(--sp-2) + env(safe-area-inset-bottom));
+    inset-inline-start: 50%;
+    transform: translateX(-50%);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--dur-mid) var(--ease-out);
+  }
+
+  .app[data-chrome='true'] .dock { opacity: 1; pointer-events: auto; }
+
+  .touch-controls {
+    inset-block: 0;
+    align-items: center;
+    padding-block: 0;
+  }
+
+  .touch-dpad { grid-template-columns: repeat(3, 46px); grid-template-rows: repeat(3, 46px); }
+  .touch-face .touch-btn { inline-size: 58px; block-size: 58px; }
+  .touch-center {
+    position: fixed;
+    inset-block-end: calc(var(--sp-1) + env(safe-area-inset-bottom));
+    inset-inline-start: 50%;
+    transform: translateX(-50%);
+    padding: 0;
+  }
+}
+
+/* ----------------------------------------------------------- Pointer ---- */
+
+/* Coarse pointers get bigger hit targets throughout. */
+@media (pointer: coarse) {
+  .btn { block-size: 44px; }
+  .icon-btn { inline-size: 44px; block-size: 44px; }
+  .slot { inline-size: 36px; block-size: 36px; }
+  .segmented-item { min-block-size: 36px; }
+}
+
+/* --------------------------------------------------------- Fullscreen --- */
+
+.app:fullscreen,
+.stage:fullscreen,
+.screen-wrap:fullscreen {
+  background: #000;
+}
+
+.screen-wrap:fullscreen .bezel {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.screen-wrap:fullscreen .bezel::after { display: none; }
+.screen-wrap:fullscreen .screen-canvas { border-radius: 0; }
+
+/* ------------------------------------------------------------ Printing -- */
+
+@media print {
+  .topbar, .dock, .touch-controls, .toast-region, .panel, .scrim { display: none !important; }
+}
