@@ -1,132 +1,191 @@
-import { useEffect, useRef, useImperativeHandle, forwardRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { SCREEN_HEIGHT, SCREEN_WIDTH } from '../emulator/NesCore';
+import { useEngine, useEngineState } from '../hooks/useEngine';
+import { useSettings } from '../storage/settings';
+import { PauseIcon, RewindIcon } from './icons';
+
+/**
+ * NES pixels are not square. On NTSC hardware the pixel aspect ratio is 8:7,
+ * which is what makes a 256x240 frame fill a 4:3 screen — circles in Metroid
+ * are round only at this ratio.
+ */
+const NTSC_PAR = 8 / 7;
+const OVERSCAN_ROWS = 16;
 
 interface ScreenProps {
-    onRef: (draw: (buffer: number[]) => void) => void;
-    scale: number;
-    crtFilter: 'off' | 'scanlines' | 'crt';
-    isFullscreen: boolean;
-    onFullscreenChange: (isFullscreen: boolean) => void;
+    onRequestStart: () => void;
 }
 
-export interface ScreenHandle {
-    getCanvas: () => HTMLCanvasElement | null;
-    takeScreenshot: () => string | null;
-}
+export function Screen({ onRequestStart }: ScreenProps) {
+    const engine = useEngine();
+    const state = useEngineState();
+    const settings = useSettings();
 
-export const Screen = forwardRef<ScreenHandle, ScreenProps>(({
-    onRef,
-    scale,
-    crtFilter,
-    isFullscreen,
-    onFullscreenChange
-}, ref) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
-    const containerRef = useRef<HTMLDivElement>(null);
-    const [fullscreenScale, setFullscreenScale] = useState(1);
+    const wrapRef = useRef<HTMLDivElement>(null);
+    const glowSlotRef = useRef<HTMLDivElement>(null);
+    const [showPowerOn, setShowPowerOn] = useState(false);
 
-    useImperativeHandle(ref, () => ({
-        getCanvas: () => canvasRef.current,
-        takeScreenshot: () => {
-            if (canvasRef.current) {
-                return canvasRef.current.toDataURL('image/png');
-            }
-            return null;
-        }
-    }));
+    const running = state.status === 'running';
+    const sourceHeight = settings.overscan ? SCREEN_HEIGHT - OVERSCAN_ROWS : SCREEN_HEIGHT;
+
+    /* --- Attach the renderer to this canvas ------------------------------ */
+
+    useLayoutEffect(() => {
+        if (canvasRef.current) engine.attachCanvas(canvasRef.current);
+    }, [engine]);
+
+    /* --- Mount the ambient-glow canvas the renderer owns ------------------ */
 
     useEffect(() => {
-        if (!canvasRef.current) return;
-        const ctx = canvasRef.current.getContext('2d');
-        if (!ctx) return;
+        const slot = glowSlotRef.current;
+        const glow = engine.renderer?.getGlowCanvas();
+        if (!slot || !glow) return;
+        glow.style.width = '100%';
+        glow.style.height = '100%';
+        slot.appendChild(glow);
+        return () => { glow.remove(); };
+    }, [engine, state.romId]);
 
-        const imageData = ctx.createImageData(256, 240);
-        // 32-bit view for faster access
-        const buf32 = new Uint32Array(imageData.data.buffer);
+    /* --- Sizing ---------------------------------------------------------- */
 
-        const draw = (buffer: number[]) => {
-            // buffer is 32-bit integers (0xRRGGBB). 
-            // We write to 32-bit view.
-            for (let i = 0; i < 256 * 240; i++) {
-                // Set alpha to 255 (0xFF)
-                buf32[i] = 0xFF000000 | buffer[i];
-            }
+    /**
+     * Size the canvas so one source pixel maps to a whole number of device
+     * pixels. Left to the compositor, a 2.5x scale on a 2x display lands on
+     * fractional device pixels and the picture shimmers as it moves.
+     *
+     * Writes straight to the element and the renderer rather than through React
+     * state: this runs on every resize and orientation change, and none of it
+     * needs to re-render the tree.
+     */
+    const measure = useCallback(() => {
+        const wrap = wrapRef.current;
+        const canvas = canvasRef.current;
+        if (!wrap || !canvas) return;
 
-            ctx.putImageData(imageData, 0, 0);
+        const dpr = window.devicePixelRatio || 1;
+        const par = settings.aspect === 'pixel' ? 1 : NTSC_PAR;
+
+        const isFullscreen = document.fullscreenElement === wrap;
+        // Leave room for the bezel padding and the dock below.
+        const availableWidth = isFullscreen ? window.innerWidth : Math.min(wrap.parentElement?.clientWidth ?? 960, 1180) - 32;
+        const availableHeight = isFullscreen
+            ? window.innerHeight
+            : Math.max(240, window.innerHeight - 220);
+
+        const naturalWidth = SCREEN_WIDTH * par;
+        let scale = Math.min(availableWidth / naturalWidth, availableHeight / sourceHeight);
+
+        if (settings.aspect !== 'stretch') {
+            scale = Math.min(scale, settings.scale);
+        }
+
+        if (settings.integerScale) {
+            // Snap to an integer number of device pixels per source pixel.
+            const deviceScale = Math.max(1, Math.floor(scale * dpr));
+            scale = deviceScale / dpr;
+        }
+
+        const width = Math.max(SCREEN_WIDTH, Math.round(naturalWidth * scale));
+        const height = Math.max(sourceHeight, Math.round(sourceHeight * scale));
+
+        canvas.style.width = `${width}px`;
+        canvas.style.height = `${height}px`;
+        engine.renderer?.resize(width, height);
+    }, [engine, settings.aspect, settings.scale, settings.integerScale, sourceHeight]);
+
+    useLayoutEffect(() => {
+        measure();
+        const observer = new ResizeObserver(measure);
+        if (wrapRef.current?.parentElement) observer.observe(wrapRef.current.parentElement);
+        window.addEventListener('resize', measure);
+        window.addEventListener('orientationchange', measure);
+        document.addEventListener('fullscreenchange', measure);
+        return () => {
+            observer.disconnect();
+            window.removeEventListener('resize', measure);
+            window.removeEventListener('orientationchange', measure);
+            document.removeEventListener('fullscreenchange', measure);
         };
+    }, [measure]);
 
-        onRef(draw);
-    }, [onRef]);
+    /* --- Power-on flourish ----------------------------------------------- */
 
-    // Handle fullscreen changes
     useEffect(() => {
-        const handleFullscreenChange = () => {
-            const isNowFullscreen = document.fullscreenElement === containerRef.current;
-            onFullscreenChange(isNowFullscreen);
+        if (!state.romId || !settings.crtPowerOn) return;
+        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+        // Deferred out of the effect body so this is a scheduled update rather
+        // than a synchronous cascade off the ROM change.
+        const start = window.setTimeout(() => setShowPowerOn(true), 0);
+        const end = window.setTimeout(() => setShowPowerOn(false), 700);
+        return () => { window.clearTimeout(start); window.clearTimeout(end); };
+    }, [state.romId, settings.crtPowerOn]);
 
-            if (isNowFullscreen) {
-                // Calculate scale to fit screen while maintaining aspect ratio
-                const screenWidth = window.innerWidth;
-                const screenHeight = window.innerHeight;
-                const gameWidth = 256;
-                const gameHeight = 240;
+    /* --- Description for assistive technology ---------------------------- */
 
-                const scaleX = screenWidth / gameWidth;
-                const scaleY = screenHeight / gameHeight;
-                setFullscreenScale(Math.min(scaleX, scaleY) * 0.95); // 95% to leave some margin
-            }
-        };
-
-        document.addEventListener('fullscreenchange', handleFullscreenChange);
-        return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
-    }, [onFullscreenChange]);
-
-    // Toggle fullscreen
-    useEffect(() => {
-        const container = containerRef.current;
-        if (!container) return;
-
-        if (isFullscreen && !document.fullscreenElement) {
-            container.requestFullscreen().catch(err => {
-                console.error('Error entering fullscreen:', err);
-            });
-        } else if (!isFullscreen && document.fullscreenElement) {
-            document.exitFullscreen().catch(err => {
-                console.error('Error exiting fullscreen:', err);
-            });
-        }
-    }, [isFullscreen]);
-
-    const currentScale = isFullscreen ? fullscreenScale : scale;
-
-    const getFilterClass = () => {
-        switch (crtFilter) {
-            case 'scanlines': return 'filter-scanlines';
-            case 'crt': return 'filter-crt';
-            default: return '';
-        }
-    };
+    const description = state.romName
+        ? `${state.romName}. ${running ? 'Playing' : 'Paused'}.`
+        : 'No game loaded.';
 
     return (
-        <div
-            ref={containerRef}
-            className={`screen-container ${isFullscreen ? 'fullscreen' : ''} ${getFilterClass()}`}
-        >
-            <canvas
-                ref={canvasRef}
-                width={256}
-                height={240}
-                style={{
-                    imageRendering: 'pixelated',
-                    width: `${256 * currentScale}px`,
-                    height: `${240 * currentScale}px`,
-                    border: isFullscreen ? 'none' : '4px solid #333',
-                    background: '#000'
-                }}
-            />
-            {crtFilter === 'scanlines' && <div className="scanline-overlay" />}
-            {crtFilter === 'crt' && <div className="crt-overlay" />}
+        <div className="screen-wrap" ref={wrapRef} id="game-screen">
+            {settings.ambientGlow && (
+                <div
+                    className="screen-glow"
+                    ref={glowSlotRef}
+                    data-visible={running ? 'true' : 'false'}
+                    aria-hidden="true"
+                />
+            )}
+
+            <div className="bezel" data-filter={settings.filter}>
+                <canvas
+                    ref={canvasRef}
+                    className="screen-canvas"
+                    role="img"
+                    aria-label={description}
+                    onClick={() => { if (!running) onRequestStart(); }}
+                />
+
+                {showPowerOn && <div className="power-on" aria-hidden="true" />}
+
+                {state.status === 'paused' && state.romId && (
+                    <div className="pause-veil">
+                        <span className="pause-veil-icon"><PauseIcon size={26} /></span>
+                        <span className="pause-veil-label">Paused</span>
+                    </div>
+                )}
+
+                {state.isRewinding && (
+                    <div className="rewind-overlay">
+                        <RewindIcon size={14} />
+                        Rewinding · {state.rewindSeconds.toFixed(1)}s left
+                    </div>
+                )}
+
+                {settings.showFps && running && (
+                    <div className="hud" aria-hidden="true">
+                        <div className="hud-row">
+                            <span className="hud-key">FPS</span>
+                            <span>{state.fps.toFixed(1)}</span>
+                        </div>
+                        <div className="hud-row">
+                            <span className="hud-key">AUDIO</span>
+                            <span>{state.audioLatencyMs}ms</span>
+                        </div>
+                        {state.speed !== 1 && (
+                            <div className="hud-row">
+                                <span className="hud-key">SPEED</span>
+                                <span>{state.speed}x</span>
+                            </div>
+                        )}
+                        <div className="hud-row">
+                            <span className="hud-key">VIDEO</span>
+                            <span>{state.usingWebGl ? 'GL' : '2D'}</span>
+                        </div>
+                    </div>
+                )}
+            </div>
         </div>
     );
-});
-
-Screen.displayName = 'Screen';
+}
