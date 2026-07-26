@@ -1,13 +1,18 @@
 {
-  "name": "nes-emulator",
+  "name": "nes-station",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "A fast, offline NES emulator for the browser.",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --experimental-strip-types scripts/verify-gamegenie.mjs",
+    "check": "tsc -b && eslint . && npm test",
+    "icons": "node scripts/generate-icons.mjs",
+    "test-rom": "node scripts/make-test-rom.mjs"
   },
   "dependencies": {
     "jsnes": "^1.2.1",
